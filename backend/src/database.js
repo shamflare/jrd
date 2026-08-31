@@ -269,6 +269,30 @@ db.exec(`
     created_at TEXT DEFAULT (datetime('now')),
     UNIQUE(tenant_id, tab, match_key, source_item_id)
   );
+
+  -- kontor_runs: تشغيلة مقارنة أرقام واحدة (قسم "مقارنة الأرقام").
+  -- الروبوت بطيء (دقائق)، لذا نحفظ النتيجة كاملة لتُراجَع لاحقاً بلا إعادة تشغيل.
+  -- result_json يحوي الصفوف المصنّفة؛ summary_json يحوي الأعداد والمبالغ فقط
+  -- ليُقرأ في قائمة السجلّ دون تحميل النتيجة الضخمة.
+  CREATE TABLE IF NOT EXISTS kontor_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id     INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id) ON DELETE CASCADE,
+    item_id       INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+    provider_name TEXT NOT NULL DEFAULT '',
+    apisi_key     TEXT NOT NULL DEFAULT '',
+    start_date    TEXT NOT NULL,
+    end_date      TEXT NOT NULL,
+    status        TEXT NOT NULL DEFAULT 'running'
+                  CHECK(status IN ('running','done','error')),
+    stage         TEXT DEFAULT '',
+    ours_count    INTEGER,
+    theirs_count  INTEGER,
+    summary_json  TEXT DEFAULT '',
+    result_json   TEXT DEFAULT '',
+    error         TEXT DEFAULT '',
+    created_at    TEXT DEFAULT (datetime('now')),
+    finished_at   TEXT
+  );
 `);
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -338,6 +362,12 @@ addColumn('api_configs', 'whatsapp_group_name', `TEXT DEFAULT ''`);
 // 2.2.0) Migration: api_configs.pin — رمز الـ PIN (الآلة الحاسبة) لروبوت bayi_alayatl
 // يختلف لكل عميل. فارغ = يستخدم الافتراضي في السكرابر.
 addColumn('api_configs', 'pin', `TEXT DEFAULT ''`);
+
+// 2.2.0.1) Migration: api_configs.apisi_key — اسم الجهة كما يكتبه عمود Apisi
+// في لوحة موقعنا (قسم "مقارنة الأرقام"). لا يمكن اشتقاقه من الرابط: اللوحة
+// تكتب الاسم المُعرَّف داخلها (مثل "تويتي" أو "فيكس") لا اسم النطاق.
+// فارغ = نخمّنه من الرابط، والمستخدم يصحّحه من نافذة الرموز.
+addColumn('api_configs', 'apisi_key', `TEXT DEFAULT ''`);
 
 // 2.2.1) Migration: current_values.provider_balance / provider_debt
 // لعرض المتاح والدين لمزوّدي znet / murat_temiz في عمود الملاحظات (لا تدخل الحسابات)
@@ -479,6 +509,9 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_price_packages_source         ON price_packages(source_item_id);
   CREATE INDEX IF NOT EXISTS idx_price_packages_match          ON price_packages(tenant_id, tab, match_key);
   CREATE INDEX IF NOT EXISTS idx_price_links_tenant_tab        ON price_links(tenant_id, tab);
+
+  CREATE INDEX IF NOT EXISTS idx_kontor_runs_tenant_created    ON kontor_runs(tenant_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_kontor_runs_item              ON kontor_runs(item_id);
 `);
 
 // ════════════════════════════════════════════════════════════════════════════
