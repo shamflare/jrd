@@ -9,3 +9,4 @@ debug-*.png
 .vite/
 frontend/dist/
 *.log
+scraper/probe-out/
