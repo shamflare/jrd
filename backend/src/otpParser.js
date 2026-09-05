@@ -1,18 +1,20 @@
 /**
- * otpParser — استخراج كود الـ OTP (CepSifre) من رسائل AKBANK.
+ * otpParser — استخراج كود الـ OTP (CepSifre) من رسائل أكبنك.
  *
- * نموذج الرسالة المستهدَف:
- *   PARA CIKISI: 0034-0361082 hesaptan AKBANK T. 1268-TR590004601268888000382460
- *   nolu hesaba 10.000,00 TL gondermek icin 03 nolu CepSifreniz: 229010. B002
+ * المُرسِل هو الرمز القصير `CEPSIFRE` (وليس AKBANK)، والصيغة الفعلية:
  *
- * المطلوب: 229010
+ *   PARA CIKISI: 0034-0361082 hesaptan AKBANK T. 1268-TR59000460126888800038
+ *   2460 nolu hesaba 10.000,00 TL gondermek icin 03 nolu CepSifreniz: . B002229010
  *
- * ملاحظة مهمّة: لا نلتقط أي رقم في النصّ — نشترط أن يسبقه أحد ألفاظ
- * "الشِّفرة/الكود" التركية، وإلا التقطنا أرقام الحساب أو المبلغ.
- * (`1268` في المثال أعلاه يسبقه "AKBANK T." وليس "sifre" فلا يُلتقط.)
+ * المطلوب: 229010 — أي أن الكود يأتي **بعد** الواسم `B002`، لا مباشرة بعد
+ * النقطتين. ورأينا كذلك صيغة يسبق فيها الكودُ الواسمَ (`CepSifreniz: 229010. B002`)،
+ * فنقبل الترتيبين.
+ *
+ * مبدأ الأمان: لا نبحث عن الأرقام إلا في ما **بعد** لفظ الشِّفرة، فيستحيل أن
+ * نلتقط رقم الحساب أو IBAN أو المبلغ لأنّها كلّها تسبقه في الرسالة.
  */
 
-// تطبيع الحروف التركية كي تعمل الـ regex على "Şifreniz" و "Sifreniz" و "şıfre" معاً.
+// تطبيع الحروف التركية كي تعمل الـ regex على "Şifreniz" و "Sifreniz" معاً.
 function normalizeTr(s) {
   return String(s || '')
     .replace(/[şŞ]/g, 's')
@@ -24,18 +26,17 @@ function normalizeTr(s) {
     .toLowerCase();
 }
 
-// الأنماط مرتّبة بالأولوية: الأدقّ أوّلاً.
-// كلّها تُطبَّق على النصّ المُطبَّع (lowercase + بلا حروف تركية خاصّة).
-const PATTERNS = [
-  // "03 nolu CepSifreniz: 229010"  /  "CepSifreniz 229010"
-  /cep\s*sifr(?:e|eniz|niz)?\s*[:\-]?\s*(\d{4,10})\b/,
-  // "Islem Sifreniz: 123456" / "Sifreniz: 123456" / "Sifre: 123456"
-  /(?:islem\s*)?sifr(?:e|eniz|niz)\s*[:\-]?\s*(\d{4,10})\b/,
-  // "Dogrulama kodunuz: 123456" / "Guvenlik kodu: 123456" / "Onay kodu 123456"
-  /(?:dogrulama|guvenlik|onay|islem|tek\s*kullanimlik)\s*kod(?:u|unuz|unuz)?\s*[:\-]?\s*(\d{4,10})\b/,
-  // "kodunuz: 123456" (عامّ — آخر ملاذ قبل الفشل)
-  /kod(?:u|unuz)\s*[:\-]?\s*(\d{4,10})\b/,
+// ألفاظ "الشِّفرة/الكود" مرتّبة بالأولوية — الأدقّ أوّلاً.
+const KEYWORDS = [
+  /cep\s*sifre(?:niz)?/,
+  /(?:islem\s*)?sifre(?:si|niz)?/,
+  /(?:dogrulama|guvenlik|onay|tek\s*kullanimlik)\s*kod(?:u|unuz)?/,
+  /kod(?:u|unuz)/,
 ];
+
+// واسم نهاية رسائل أكبنك: حرف B يليه ثلاثة أرقام (B002). يُحذف قبل قراءة
+// الكود وإلّا التقطنا `002` بدل `229010` في `B002229010`.
+const MARKER = /\bb\d{3}/g;
 
 /**
  * @param {string} text نصّ الرسالة الخام
@@ -44,20 +45,39 @@ const PATTERNS = [
 export function parseOtpCode(text) {
   if (!text || typeof text !== 'string') return null;
   const norm = normalizeTr(text);
-  for (const re of PATTERNS) {
-    const m = norm.match(re);
-    if (m && m[1]) return { code: m[1] };
+
+  for (const kw of KEYWORDS) {
+    const m = norm.match(kw);
+    if (!m) continue;
+    // ما بعد اللفظ فقط — يستبعد رقم الحساب والمبلغ لأنّهما قبله.
+    const tail = norm.slice(m.index + m[0].length).replace(MARKER, ' ');
+    const hit = tail.match(/(\d{4,10})/);
+    // الكود قد يبدأ بصفر (مثل 035511) فنُبقيه نصّاً ولا نحوّله لعدد أبداً.
+    if (hit) return { code: hit[1] };
   }
   return null;
 }
 
 /**
- * فلتر المُرسِل: نقبل فقط ما يبدو أنه من أكبنك.
- * يُطبَّق على اسم جهة الاتصال أو نصّ الرسالة (بعض الرسائل تحوي AKBANK في المتن).
- * سلوك متساهل عمداً: لو لم نعرف اسم جهة الاتصال نعتمد على النصّ.
+ * فلتر المُرسِل — دفاع في العمق فقط؛ الحماية الفعلية هي INTERNAL_API_KEY
+ * وكون السكرابر لا يفتح سوى محادثة واحدة.
+ *
+ * يعتمد على اسم المُرسِل لا على متن الرسالة: بعض رسائل CEPSIFRE تخصّ تحويلاً
+ * إلى بنك آخر (مثل TURKIYE IS BNK) فلا تذكر AKBANK إطلاقاً، وكان اشتراط
+ * ذكرها يُسقط أكواداً صحيحة.
  */
-export function looksLikeAkbank({ contactName = '', text = '' } = {}) {
-  return /akbank/i.test(normalizeTr(contactName)) || /akbank/i.test(normalizeTr(text));
+const DEFAULT_SENDERS = 'cepsifre,akbank';
+
+export function isOtpSender({ contactName = '', text = '' } = {}) {
+  const name = normalizeTr(contactName).trim();
+  const allowed = (process.env.OTP_ALLOWED_SENDERS || DEFAULT_SENDERS)
+    .split(',')
+    .map((s) => normalizeTr(s).trim())
+    .filter(Boolean);
+
+  if (name) return allowed.some((a) => name.includes(a));
+  // بلا اسم مُرسِل: نتساهل — المحلّل نفسه يشترط وجود لفظ الشِّفرة.
+  return allowed.some((a) => normalizeTr(text).includes(a)) || /sifre|kod/.test(normalizeTr(text));
 }
 
-export default { parseOtpCode, looksLikeAkbank };
+export default { parseOtpCode, isOtpSender };

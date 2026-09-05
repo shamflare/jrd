@@ -53,7 +53,7 @@ if [ "${GMSG2_ENABLED:-1}" != "0" ]; then
     GMSG_MODE=otp \
     GMSG_PORT="${GMSG2_PORT:-3102}" \
     GMSG_BROWSER_DATA="${GMSG2_BROWSER_DATA:-/data/gmsg2-browser-data}" \
-    GMSG_TARGET_CONTACT="${GMSG2_TARGET_CONTACT:-AKBANK}" \
+    GMSG_TARGET_CONTACT="${GMSG2_TARGET_CONTACT:-CEPSIFRE,AKBANK}" \
     node messages-scraper/src/index.js &
   GMSG2_SUP_PID=$!
 else

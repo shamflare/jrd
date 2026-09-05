@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import db from '../database.js';
-import { parseOtpCode, looksLikeAkbank } from '../otpParser.js';
+import { parseOtpCode, isOtpSender } from '../otpParser.js';
 
 /**
  * سجلّ أكواد OTP لأكبنك — مستقلّ تماماً عن نظام المستأجرين.
@@ -22,10 +22,10 @@ export function otpIngestHandler(req, res) {
     return res.status(400).json({ error: 'external_id required' });
   }
 
-  // نقبل فقط رسائل أكبنك — النسخة الثانية من السكرابر تفتح محادثة AKBANK
-  // فقط، لكن نُكرّر الفحص هنا كي لا تتسرّب رسالة من مصدر آخر لو أُعيد ضبطه.
-  if (!looksLikeAkbank({ contactName: contact_name, text })) {
-    return res.status(422).json({ ok: false, error: 'not_akbank' });
+  // النسخة الثانية من السكرابر تفتح محادثة CEPSIFRE فقط، لكن نُكرّر الفحص
+  // هنا كي لا تتسرّب رسالة من مصدر آخر لو أُعيد ضبطه.
+  if (!isOtpSender({ contactName: contact_name, text })) {
+    return res.status(422).json({ ok: false, error: 'not_otp_sender' });
   }
 
   const existing = db.prepare('SELECT id, code FROM otp_codes WHERE external_id = ?').get(external_id);

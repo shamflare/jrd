@@ -32,7 +32,12 @@ export const config = {
 
   browserDataDir: str('GMSG_BROWSER_DATA', '') || path.join(__dirname, '..', 'browser-data'),
   headless: bool('GMSG_HEADLESS', true),
+  // اسم محادثة الهدف. يقبل عدّة بدائل مفصولة بفاصلة — نفتح أوّل محادثة
+  // يطابق اسمُها أياً منها. مفيد لأن مُرسِل أكواد أكبنك اسمه CEPSIFRE لا AKBANK.
   targetContact: str('GMSG_TARGET_CONTACT', 'KUVEYT TURK'),
+  get targetContacts() {
+    return this.targetContact.split(',').map((s) => s.trim()).filter(Boolean);
+  },
 
   // وضع التشغيل — يحدّد endpoint الذي تُرسَل إليه الرسائل في backend:
   //   'bank' (افتراضي) → /api/internal/bank-message/ingest  (كويت ترك، يُحدّث الرصيد)

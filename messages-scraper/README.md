@@ -19,12 +19,15 @@
 |---|---|---|
 | `GMSG_MODE` | `bank` | `otp` |
 | `GMSG_PORT` | 3101 | 3102 |
-| `GMSG_TARGET_CONTACT` | `KUVEYT TURK` | `AKBANK` |
+| `GMSG_TARGET_CONTACT` | `KUVEYT TURK` | `CEPSIFRE,AKBANK` (بدائل مفصولة بفاصلة) |
 | `GMSG_BROWSER_DATA` | `/data/gmsg-browser-data` | `/data/gmsg2-browser-data` |
 | endpoint في backend | `/api/internal/bank-message/ingest` | `/api/internal/otp-message/ingest` |
 | الأثر | يُحدّث رصيد البند البنكي | يستخرج كود `CepSifreniz` فقط |
 | الإقران من | <https://ahlacard.net/bank> | <https://ahlacard.net/islam-source> |
 | العرض | صفحة البنك (بتسجيل دخول) | <https://alaya.ahlacard.net/islam> (عامّة) |
+
+⚠ مُرسِل أكواد أكبنك اسمه **`CEPSIFRE`** وليس `AKBANK`، والكود يأتي **بعد** الواسم
+`B002` — مثال: `CepSifreniz: . B002229010` ← الكود `229010`.
 
 **مجلّد البروفايل مختلف ⇒ إقران Google مختلف**: كل نسخة تُقرَن بحسابها/جوالها
 وحدها، وانتهاء جلسة إحداهما لا يؤثّر على الأخرى إطلاقاً.

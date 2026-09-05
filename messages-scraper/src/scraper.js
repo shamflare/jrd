@@ -34,6 +34,7 @@ export class Scraper {
     this.lastMessageAt = null;         // آخر رسالة جديدة عُولجت
     this.messagesProcessedTotal = 0;
     this.wrappersCountLastTick = 0;    // تشخيصي: عدد wrappers الرسائل المدروسة في آخر tick
+    this.matchedContact = null;        // اسم المحادثة المفتوحة فعلاً
     this.paused = false;               // وضع إيقاف مؤقّت (الواجهة تستخدمه للسماح بتسجيل دخول Google)
     this.context = null;
     this.page = null;
@@ -84,7 +85,7 @@ export class Scraper {
       seen_count: this.seen.size,
       paused: this.paused,
       active_selectors: this._activeSelectors,
-      target_contact: config.targetContact,
+      target_contact: this.matchedContact || config.targetContact,
       mode: config.mode,
       poll_interval_ms: config.pollIntervalMs,
       headless: config.headless,
@@ -532,11 +533,14 @@ export class Scraper {
     const items = this.page.locator(this._activeSelectors.list_item);
     const total = await items.count();
     log.info('list', `conversations count=${total}`);
+    const wanted = config.targetContacts.map((c) => c.toLowerCase());
     for (let i = 0; i < total; i++) {
       const item = items.nth(i);
       const name = await this._getItemName(item);
-      if (name && name.toLowerCase().includes(config.targetContact.toLowerCase())) {
+      if (name && wanted.some((w) => name.toLowerCase().includes(w))) {
         log.info('list', `target match index=${i} name="${name}"`);
+        // نحتفظ بالاسم الفعلي لنُرسله للباكئند بدل قائمة البدائل.
+        this.matchedContact = name;
         await this._dismissCdkOverlay(); // مرّة أخرى مباشرة قبل النقر
         // نقر بالقوّة (يتجاوز أي طبقة شفّافة مثل cdk-overlay-backdrop)
         await item.click({ force: true, timeout: 15000 });
@@ -551,7 +555,7 @@ export class Scraper {
         return;
       }
     }
-    throw new Error(`target_not_found:${config.targetContact}`);
+    throw new Error(`target_not_found:${config.targetContacts.join('|')}`);
   }
 
   /** يُغلق طبقات CDK overlay الشفّافة (تلميحات Material) التي تحجب النقر. */
@@ -613,7 +617,7 @@ export class Scraper {
           text: m.text,
           occurredAt: m.timestamp,
           externalId: m.hash,
-          contactName: config.targetContact,
+          contactName: this.matchedContact || config.targetContact,
         });
         this.seen.add(m.hash);
         this.lastMessageAt = new Date().toISOString();
@@ -677,7 +681,7 @@ export class Scraper {
           text: m.text,
           occurredAt: m.timestamp,
           externalId: m.hash,
-          contactName: config.targetContact,
+          contactName: this.matchedContact || config.targetContact,
         });
         log.info('ingest', 'sent', { applied: resp.applied, hash: m.hash.slice(0, 12) });
         this.seen.add(m.hash);
