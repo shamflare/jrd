@@ -31,7 +31,7 @@ export default function IslamSource() {
   const loadCodes = useCallback(async () => {
     try {
       const r = await api.get('/public/otp/list', { params: { limit: 20 } });
-      setCodes(Array.isArray(r.data) ? r.data : []);
+      setCodes(Array.isArray(r.data?.rows) ? r.data.rows : []);
     } catch { /* غير حرِج */ }
   }, []);
 

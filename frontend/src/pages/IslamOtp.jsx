@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 
 /**
@@ -10,6 +10,7 @@ import axios from 'axios';
 const http = axios.create({ baseURL: '/api/public/otp' });
 
 const POLL_MS = 5000;
+const LIMIT = 200;
 
 function fmtDate(iso) {
   if (!iso) return { date: '—', time: '—' };
@@ -29,22 +30,56 @@ export default function IslamOtp() {
   const [copied, setCopied] = useState(null);
   const [clearing, setClearing] = useState(false);
 
+  // مرآة للصفوف كي يبقى load ثابتاً (بلا تبعيات) فلا تُعاد جدولة المؤقّت مع كل ردّ.
+  const rowsRef = useRef([]);
+  const setRowsBoth = (next) => { rowsRef.current = next; setRows(next); };
+
   const load = useCallback(async () => {
+    const after = rowsRef.current[0]?.id || 0;
     try {
-      const r = await http.get('/list', { params: { limit: 200 } });
-      setRows(Array.isArray(r.data) ? r.data : []);
+      // نطلب الأحدث من آخر id لدينا فقط — الردّ عادةً فارغ (عشرات البايتات).
+      const r = await http.get('/list', {
+        params: { limit: LIMIT, ...(after ? { after } : {}) },
+      });
+      const fresh = Array.isArray(r.data?.rows) ? r.data.rows : [];
+      const total = Number(r.data?.total) || 0;
+
+      let next;
+      if (!after) next = fresh;
+      else if (fresh.length) next = [...fresh, ...rowsRef.current].slice(0, LIMIT);
+      else next = rowsRef.current; // نفس المرجع ⇒ React لا يُعيد الرسم
+
+      // اختلاف العدد يعني تغيّراً لا تكشفه الفروق (تفريغ من زائر آخر مثلاً)
+      // ⇒ نُعيد تحميلاً كاملاً مرّة واحدة فيتصحّح العرض تلقائياً.
+      if (next.length !== Math.min(total, LIMIT)) {
+        const full = await http.get('/list', { params: { limit: LIMIT } });
+        next = Array.isArray(full.data?.rows) ? full.data.rows : [];
+      }
+
+      setRowsBoth(next);
       setErr(null);
     } catch (e) {
-      setErr(e.response?.data?.error || e.message);
+      // 429 يعني أننا نطرق بسرعة زائدة — ليست حالة خطأ تستحقّ إزعاج المستخدم.
+      if (e.response?.status !== 429) setErr(e.response?.data?.error || e.message);
     } finally {
       setLoading(false);
     }
   }, []);
 
+  // نستطلع فقط حين تكون الصفحة مرئية: تبويب متروك في الخلفية لا يستهلك شيئاً،
+  // ويُحدَّث فوراً لحظة العودة إليه.
   useEffect(() => {
+    let timer = null;
+    const start = () => { if (!timer) timer = setInterval(load, POLL_MS); };
+    const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') { load(); start(); } else stop();
+    };
+
     load();
-    const id = setInterval(load, POLL_MS);
-    return () => clearInterval(id);
+    if (document.visibilityState === 'visible') start();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => { stop(); document.removeEventListener('visibilitychange', onVisibility); };
   }, [load]);
 
   const copy = async (code) => {
@@ -62,7 +97,7 @@ export default function IslamOtp() {
     setClearing(true);
     try {
       await http.delete('/clear');
-      setRows([]);
+      setRowsBoth([]); // يصفّر أيضاً نقطة البدء (after) للاستطلاع التالي
     } catch (e) {
       alert('فشل المسح: ' + (e.response?.data?.error || e.message));
     } finally {

@@ -53,6 +53,47 @@ export function otpIngestHandler(req, res) {
   }
 }
 
+// ─── حدّ المعدّل ────────────────────────────────────────────────────────────
+/**
+ * نافذة منزلقة بسيطة في الذاكرة — بلا اعتماديات جديدة.
+ * ضرورية لأن هذه المسارات عامّة بلا تسجيل دخول، فلا شيء آخر يمنع طرقها بلا حدّ.
+ *
+ * ملاحظة: خلف Caddy يكون req.socket.remoteAddress هو عنوان الوكيل نفسه،
+ * فنعتمد أوّل عنوان في X-Forwarded-For (الذي يضبطه Caddy) كما يفعل bank.js.
+ */
+function clientIp(req) {
+  const xff = req.headers['x-forwarded-for'];
+  if (typeof xff === 'string' && xff.trim()) return xff.split(',')[0].trim();
+  return req.socket?.remoteAddress || 'unknown';
+}
+
+function rateLimit({ windowMs, max }) {
+  const hits = new Map(); // ip → { count, resetAt }
+  // تنظيف دوري حتى لا تنمو الخريطة بلا حدّ. unref كي لا يمنع إغلاق العملية.
+  const sweeper = setInterval(() => {
+    const now = Date.now();
+    for (const [ip, b] of hits) if (b.resetAt <= now) hits.delete(ip);
+  }, Math.max(windowMs, 60_000));
+  sweeper.unref?.();
+
+  return (req, res, next) => {
+    const now = Date.now();
+    const ip = clientIp(req);
+    let b = hits.get(ip);
+    if (!b || b.resetAt <= now) {
+      b = { count: 0, resetAt: now + windowMs };
+      hits.set(ip, b);
+    }
+    b.count++;
+    if (b.count > max) {
+      const retry = Math.ceil((b.resetAt - now) / 1000);
+      res.set('Retry-After', String(retry));
+      return res.status(429).json({ error: 'rate_limited', retry_after: retry });
+    }
+    next();
+  };
+}
+
 // ─── الراوتر العام (بلا auth) ───────────────────────────────────────────────
 const router = Router();
 
@@ -62,30 +103,46 @@ router.use((req, res, next) => {
   next();
 });
 
-router.get('/list', (req, res) => {
+// الصفحة تستطلع 12 مرّة/دقيقة؛ 120 تترك هامشاً واسعاً لعدّة تبويبات خلف نفس
+// الـ IP وتوقف الطرق الآلي. الحذف أندر بكثير فحدّه أضيق.
+const readLimit  = rateLimit({ windowMs: 60_000, max: 120 });
+const writeLimit = rateLimit({ windowMs: 60_000, max: 20 });
+
+/**
+ * GET /list?limit=&after=
+ *
+ * `after` = أحدث id لدى العميل. حين يُمرَّر نُعيد الأحدث منه فقط — وهو غالباً
+ * لا شيء، فيهبط حجم الردّ من ~12KB إلى عشرات البايتات في كل استطلاع.
+ *
+ * `total` يسمح للعميل بكشف ما لا يظهر في الفروق: لو فرّغ زائر آخر السجل أو
+ * حُذف صفّ، يختلف العدد عمّا لديه فيُعيد تحميلاً كاملاً من تلقاء نفسه.
+ */
+router.get('/list', readLimit, (req, res) => {
   const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
-  const rows = db.prepare(`
-    SELECT id, code, created_at
-    FROM otp_codes
-    ORDER BY id DESC
-    LIMIT ?
-  `).all(limit);
-  res.json(rows);
+  const after = parseInt(req.query.after, 10);
+  const incremental = Number.isInteger(after) && after > 0;
+
+  const rows = incremental
+    ? db.prepare('SELECT id, code, created_at FROM otp_codes WHERE id > ? ORDER BY id DESC LIMIT ?').all(after, limit)
+    : db.prepare('SELECT id, code, created_at FROM otp_codes ORDER BY id DESC LIMIT ?').all(limit);
+
+  const total = db.prepare('SELECT COUNT(*) AS n FROM otp_codes').get().n;
+  res.json({ rows, total });
 });
 
-router.delete('/clear', (req, res) => {
+router.delete('/clear', writeLimit, (req, res) => {
   const info = db.prepare('DELETE FROM otp_codes').run();
   res.json({ success: true, deleted: info.changes });
 });
 
-router.delete('/:id', (req, res) => {
+router.delete('/:id', writeLimit, (req, res) => {
   const info = db.prepare('DELETE FROM otp_codes WHERE id = ?').run(req.params.id);
   res.json({ success: true, deleted: info.changes });
 });
 
 // حالة مصدر الرسائل — تعرضها الصفحة العامّة كمؤشّر "متصل / غير متصل" فقط.
 // لا تكشف أي تفاصيل جلسة (بلا selectors أو مسارات ملفات).
-router.get('/status', async (req, res) => {
+router.get('/status', readLimit, async (req, res) => {
   const url = process.env.GMSG2_SCRAPER_URL || 'http://127.0.0.1:3102';
   try {
     const r = await fetch(`${url}/status`, {
