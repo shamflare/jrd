@@ -85,6 +85,7 @@ export class Scraper {
       paused: this.paused,
       active_selectors: this._activeSelectors,
       target_contact: config.targetContact,
+      mode: config.mode,
       poll_interval_ms: config.pollIntervalMs,
       headless: config.headless,
       browser_data_dir: config.browserDataDir,

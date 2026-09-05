@@ -7,9 +7,11 @@ import { log } from './logger.js';
  * والـ dedup (جدول bank_message_seen).
  */
 export async function sendToBackend({ text, occurredAt, externalId, contactName }) {
-  const url = `${config.backendUrl.replace(/\/$/, '')}/api/internal/bank-message/ingest`;
+  const endpoint = config.mode === 'otp' ? 'otp-message' : 'bank-message';
+  const url = `${config.backendUrl.replace(/\/$/, '')}/api/internal/${endpoint}/ingest`;
   const body = {
     source: 'gmsg',
+    // tenant_id يُتجاهَل في وضع otp (سجلّ الأكواد لا ينتمي لأي مستأجر).
     tenant_id: config.tenantId,
     contact_name: contactName || config.targetContact,
     text,

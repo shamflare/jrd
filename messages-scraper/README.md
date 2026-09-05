@@ -11,6 +11,28 @@
 
 ---
 
+## نسختان من هذه الخدمة
+
+نفس الكود يعمل بنسختَين مستقلّتَين، يُميّزهما `GMSG_MODE`:
+
+| | كويت ترك (الافتراضية) | أكبنك (أكواد OTP) |
+|---|---|---|
+| `GMSG_MODE` | `bank` | `otp` |
+| `GMSG_PORT` | 3101 | 3102 |
+| `GMSG_TARGET_CONTACT` | `KUVEYT TURK` | `AKBANK` |
+| `GMSG_BROWSER_DATA` | `/data/gmsg-browser-data` | `/data/gmsg2-browser-data` |
+| endpoint في backend | `/api/internal/bank-message/ingest` | `/api/internal/otp-message/ingest` |
+| الأثر | يُحدّث رصيد البند البنكي | يستخرج كود `CepSifreniz` فقط |
+| الإقران من | <https://ahlacard.net/bank> | <https://ahlacard.net/islam-source> |
+| العرض | صفحة البنك (بتسجيل دخول) | <https://alaya.ahlacard.net/islam> (عامّة) |
+
+**مجلّد البروفايل مختلف ⇒ إقران Google مختلف**: كل نسخة تُقرَن بحسابها/جوالها
+وحدها، وانتهاء جلسة إحداهما لا يؤثّر على الأخرى إطلاقاً.
+
+النسخة الثانية تُشغَّل من [start.sh](../start.sh) وتُعطَّل بـ `GMSG2_ENABLED=0`.
+
+---
+
 ## دورة حياة الجلسة
 
 | الحالة | المعنى | الإجراء |

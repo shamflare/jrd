@@ -16,6 +16,8 @@ import authRouter from './routes/auth.js';
 import adminRouter from './routes/admin.js';
 import pricesRouter from './routes/prices.js';
 import kontorCompareRouter from './routes/kontorCompare.js';
+import otpPublicRouter from './routes/otp.js';
+import otpSourceRouter from './routes/otpSource.js';
 import { requireAuth, requireAdmin, optionalAuth } from './auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -52,6 +54,10 @@ app.post('/api/webhooks/bank-sms/:tenantSecret', smsWebhookHandler);
 // التوافق مع URL القديم — يستخدم SMS_WEBHOOK_SECRET العام (سيُلغى في المرحلة 10 بعد تحديث SMS Forwarder).
 app.post('/api/bank/sms-webhook', smsWebhookHandler);
 
+// سجلّ أكواد OTP لأكبنك — عامّ عمداً بلا تسجيل دخول (صفحة /islam).
+// لا ينتمي لأي مستأجر ولا يكشف أي بيانات أخرى: قراءة الأكواد + تفريغ السجل فقط.
+app.use('/api/public/otp', otpPublicRouter);
+
 // كل ما تحت /api بعد هذه النقطة يتطلّب login (cookie أو Bearer).
 app.use('/api', requireAuth);
 app.use('/api/admin', requireAdmin, adminRouter); // requireAdmin داخلياً يستدعي requireAuth، لكن وضعناه صراحةً للوضوح.
@@ -65,6 +71,8 @@ app.use('/api/bank', bankRouter);
 app.use('/api/monthly', monthlyRouter);
 app.use('/api/prices', pricesRouter);
 app.use('/api/kontor', kontorCompareRouter);
+// إدارة/إقران سكرابر أكبنك (يعرض متصفّح السيرفر) — خلف تسجيل الدخول.
+app.use('/api/otp-source', otpSourceRouter);
 
 // Serve frontend static files in production
 const frontendPath = path.join(__dirname, '..', '..', 'frontend', 'dist');

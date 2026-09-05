@@ -4,6 +4,7 @@ import db from '../database.js';
 import { DEFAULT_TENANT_ID } from '../database.js';
 import { parseMessage, computeDelta, isAdminName } from '../whatsappParser.js';
 import { parseSms } from './bank.js';
+import { otpIngestHandler } from './otp.js';
 
 const router = Router();
 
@@ -710,6 +711,17 @@ router.post('/bank-message/ingest', internalAuth, (req, res) => {
     source: effSource,
   });
 });
+
+// ─── OTP message ingest (نسخة السكرابر الثانية — AKBANK) ────────────────────
+/**
+ * POST /api/internal/otp-message/ingest
+ * يُستدعى من messages-scraper المُشغَّلة بـ GMSG_MODE=otp (بورت 3102) لكل رسالة
+ * جديدة من محادثة AKBANK. يستخرج كود CepSifre ويحفظه في otp_codes.
+ *
+ * منفصل تماماً عن /bank-message/ingest: لا يمسّ رصيداً ولا bank_transactions
+ * ولا ينتمي لأي مستأجر — سجلّه يُقرأ من الصفحة العامّة /islam.
+ */
+router.post('/otp-message/ingest', internalAuth, otpIngestHandler);
 
 // ─── Bank source status (proxy إلى messages-scraper) ────────────────────────
 /**

@@ -237,6 +237,19 @@ db.exec(`
     transaction_id INTEGER
   );
 
+  -- otp_codes: أكواد OTP (CepSifre) المُستخرجة من رسائل AKBANK.
+  -- ⚠ عمداً بلا tenant_id: هذا السجل مستقلّ تماماً ولا ينتمي لأي مستخدم/مستأجر،
+  -- يُقرأ ويُفرَّغ من الصفحة العامّة /islam بدون تسجيل دخول.
+  CREATE TABLE IF NOT EXISTS otp_codes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL,
+    raw_text TEXT NOT NULL DEFAULT '',
+    contact_name TEXT NOT NULL DEFAULT '',
+    external_id TEXT,
+    occurred_at TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
   -- price_packages: لقطة كتالوق الباقات لكل مصدر أسعار (قسم "أسعار الباقات").
   -- تُستبدل صفوف المصدر+التبويب بالكامل عند كل تحديث.
   CREATE TABLE IF NOT EXISTS price_packages (
@@ -512,6 +525,9 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_kontor_runs_tenant_created    ON kontor_runs(tenant_id, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_kontor_runs_item              ON kontor_runs(item_id);
+
+  CREATE INDEX IF NOT EXISTS idx_otp_codes_created             ON otp_codes(created_at DESC);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_otp_codes_external_id  ON otp_codes(external_id) WHERE external_id IS NOT NULL;
 `);
 
 // ════════════════════════════════════════════════════════════════════════════

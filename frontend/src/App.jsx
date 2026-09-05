@@ -14,6 +14,8 @@ import WhatsApp from './pages/WhatsApp.jsx';
 import Prices from './pages/Prices.jsx';
 import KontorCompare from './pages/KontorCompare.jsx';
 import Login from './pages/Login.jsx';
+import IslamOtp from './pages/IslamOtp.jsx';
+import IslamSource from './pages/IslamSource.jsx';
 import AdminTenants from './pages/AdminTenants.jsx';
 import AdminUsers from './pages/AdminUsers.jsx';
 
@@ -34,6 +36,7 @@ function ProtectedShell() {
           <Route path="/whatsapp" element={<WhatsApp />} />
           <Route path="/prices" element={<Prices />} />
           <Route path="/kontor-compare" element={<KontorCompare />} />
+          <Route path="/islam-source" element={<IslamSource />} />
           <Route path="/admin/tenants" element={<RequireAuth adminOnly><AdminTenants /></RequireAuth>} />
           <Route path="/admin/users" element={<RequireAuth adminOnly><AdminUsers /></RequireAuth>} />
         </Routes>
@@ -48,6 +51,8 @@ export default function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
+          {/* صفحة عامّة عمداً — خارج RequireAuth (سجلّ أكواد أكبنك). */}
+          <Route path="/islam" element={<IslamOtp />} />
           <Route
             path="/*"
             element={

@@ -34,6 +34,11 @@ export const config = {
   headless: bool('GMSG_HEADLESS', true),
   targetContact: str('GMSG_TARGET_CONTACT', 'KUVEYT TURK'),
 
+  // وضع التشغيل — يحدّد endpoint الذي تُرسَل إليه الرسائل في backend:
+  //   'bank' (افتراضي) → /api/internal/bank-message/ingest  (كويت ترك، يُحدّث الرصيد)
+  //   'otp'            → /api/internal/otp-message/ingest   (أكبنك، يستخرج CepSifre فقط)
+  mode: str('GMSG_MODE', 'bank') === 'otp' ? 'otp' : 'bank',
+
   pollIntervalMs: int('GMSG_POLL_INTERVAL_MS', 12000),
   navTimeoutMs: int('GMSG_NAV_TIMEOUT_MS', 45000),
   pairingTimeoutSec: int('GMSG_PAIRING_TIMEOUT_SEC', 1800),
