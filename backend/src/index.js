@@ -17,7 +17,6 @@ import adminRouter from './routes/admin.js';
 import pricesRouter from './routes/prices.js';
 import kontorCompareRouter from './routes/kontorCompare.js';
 import otpPublicRouter from './routes/otp.js';
-import otpSourceRouter from './routes/otpSource.js';
 import { requireAuth, requireAdmin, optionalAuth } from './auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -71,8 +70,6 @@ app.use('/api/bank', bankRouter);
 app.use('/api/monthly', monthlyRouter);
 app.use('/api/prices', pricesRouter);
 app.use('/api/kontor', kontorCompareRouter);
-// إدارة/إقران سكرابر أكبنك (يعرض متصفّح السيرفر) — خلف تسجيل الدخول.
-app.use('/api/otp-source', otpSourceRouter);
 
 // Serve frontend static files in production
 const frontendPath = path.join(__dirname, '..', '..', 'frontend', 'dist');

@@ -6,8 +6,8 @@ import { parseOtpCode, isOtpSender } from '../otpParser.js';
  * سجلّ أكواد OTP لأكبنك — مستقلّ تماماً عن نظام المستأجرين.
  *
  * - الاستقبال: POST /api/internal/otp-message/ingest  (محمي بـ INTERNAL_API_KEY)
- *   يُستدعى من نسخة messages-scraper الثانية (GMSG_MODE=otp) المقترنة
- *   بحساب Google Messages الخاص بـ AKBANK.
+ *   يُستدعى من نفس messages-scraper المقترن الذي يقرأ رسائل كويت ترك؛ فهو
+ *   يتناوب على محادثتَي KUVEYT TURK و CEPSIFRE في الجلسة نفسها.
  * - العرض/التفريغ: /api/public/otp/*  — عامّ بلا تسجيل دخول (صفحة /islam).
  */
 
@@ -143,7 +143,8 @@ router.delete('/:id', writeLimit, (req, res) => {
 // حالة مصدر الرسائل — تعرضها الصفحة العامّة كمؤشّر "متصل / غير متصل" فقط.
 // لا تكشف أي تفاصيل جلسة (بلا selectors أو مسارات ملفات).
 router.get('/status', readLimit, async (req, res) => {
-  const url = process.env.GMSG2_SCRAPER_URL || 'http://127.0.0.1:3102';
+  // نفس السكرابر المقترن الذي يقرأ رسائل البنك — لا نسخة ثانية ولا إقران آخر.
+  const url = process.env.GMSG_SCRAPER_URL || 'http://127.0.0.1:3101';
   try {
     const r = await fetch(`${url}/status`, {
       headers: { 'X-Internal-Api-Key': process.env.INTERNAL_API_KEY || '' },

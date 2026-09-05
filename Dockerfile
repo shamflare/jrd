@@ -65,7 +65,7 @@ COPY --from=frontend-build /app/frontend/dist ./frontend/dist
 RUN chmod +x /app/start.sh
 
 # Persistent data dir (mounted as a Volume in Railway)
-RUN mkdir -p /data/uploads /data/browser-data /data/auth_sessions /data/gmsg-browser-data /data/gmsg2-browser-data
+RUN mkdir -p /data/uploads /data/browser-data /data/auth_sessions /data/gmsg-browser-data
 
 # Note: we run as root because Railway-mounted volumes are root-owned.
 # Chromium is launched with --no-sandbox (see scraper/src/fetch.js).
@@ -74,6 +74,5 @@ RUN mkdir -p /data/uploads /data/browser-data /data/auth_sessions /data/gmsg-bro
 EXPOSE 3001
 EXPOSE 3100
 EXPOSE 3101
-EXPOSE 3102
 
 CMD ["/bin/sh", "/app/start.sh"]

@@ -6,9 +6,9 @@ import api from '../api.js';
 /**
  * بطاقة مصدر رسائل Google Messages + متصفّح الإقران التفاعلي.
  *
- * مشتركة بين نسختَي السكرابر — تُميّزهما عبر prop اسمه base:
- *   '/internal/bank-message' → كويت ترك (يُحدّث الرصيد)
- *   '/otp-source'            → أكبنك   (أكواد OTP لصفحة /islam)
+ * السكرابر واحد ويقرأ محادثتَي كويت ترك و CEPSIFRE في الجلسة المقترنة نفسها،
+ * فتُستخدم البطاقة في صفحة /bank فقط. يبقى prop اسمه base ليسهل توجيهها إلى
+ * مسار API آخر إن لزم لاحقاً.
  */
 
 // ─── بطاقة مصدر رسائل البنك (Google Messages Web scraper) ─────────────────
@@ -84,8 +84,11 @@ export default function GmsgSourceCard({
       {reachable && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-gray-600 mb-3">
           <div className="bg-gray-50 rounded p-2">
-            <p className="text-gray-400 mb-0.5">جهة الاتصال</p>
+            <p className="text-gray-400 mb-0.5">المحادثات المتابَعة</p>
             <p className="font-bold text-gray-800">{status.target_contact || '—'}</p>
+            {status.open_conversation && (
+              <p className="text-[10px] text-gray-400 mt-0.5">مفتوحة الآن: {status.open_conversation}</p>
+            )}
           </div>
           <div className="bg-gray-50 rounded p-2">
             <p className="text-gray-400 mb-0.5">رسائل معالَجة</p>

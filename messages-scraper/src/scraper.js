@@ -16,6 +16,16 @@ import {
 const MESSAGES_URL = 'https://messages.google.com/web/conversations';
 
 /**
+ * هل هذه رسالة كود OTP؟ رسائل الرصيد من كويت ترك لا تحوي لفظ الشِّفرة إطلاقاً،
+ * فوجودُه علامة قاطعة. يُستخدم لتوجيه كل رسالة إلى وجهتها في backend.
+ */
+function looksLikeOtpMessage(text) {
+  const t = String(text || '')
+    .replace(/[şŞ]/g, 's').replace(/[ıİ]/g, 'i').toLowerCase();
+  return /cep\s*sifre|sifreniz|sifresi/.test(t);
+}
+
+/**
  * State machine بسيطة:
  *  idle             — لم نبدأ بعد
  *  starting         — يفتح المتصفّح
@@ -35,6 +45,8 @@ export class Scraper {
     this.messagesProcessedTotal = 0;
     this.wrappersCountLastTick = 0;    // تشخيصي: عدد wrappers الرسائل المدروسة في آخر tick
     this.matchedContact = null;        // اسم المحادثة المفتوحة فعلاً
+    this._groupIndex = 0;              // مؤشّر التناوب بين محادثتَي البنك والأكواد
+    this.bootstrappedGroups = new Set(); // أي مجموعة عُلِّمت رسائلها الحالية كـ seen
     this.paused = false;               // وضع إيقاف مؤقّت (الواجهة تستخدمه للسماح بتسجيل دخول Google)
     this.context = null;
     this.page = null;
@@ -85,8 +97,9 @@ export class Scraper {
       seen_count: this.seen.size,
       paused: this.paused,
       active_selectors: this._activeSelectors,
-      target_contact: this.matchedContact || config.targetContact,
-      mode: config.mode,
+      target_contact: config.targetContacts.join(' + '),
+      open_conversation: this.matchedContact || null,
+      otp_contacts: config.otpContacts,
       poll_interval_ms: config.pollIntervalMs,
       headless: config.headless,
       browser_data_dir: config.browserDataDir,
@@ -527,20 +540,21 @@ export class Scraper {
     return full.split('\n')[0] || '';
   }
 
-  async _openTargetConversation() {
+  /**
+   * يفتح أوّل محادثة يطابق اسمُها أياً من `wanted`.
+   * @returns {Promise<string|null>} اسم المحادثة المفتوحة، أو null إن لم تُوجَد.
+   */
+  async _openConversation(wanted) {
     // إن وُجد cdk-overlay-backdrop (تلميح/نافذة CDK) فاضغط Escape ثم انقر عليه ليختفي.
     await this._dismissCdkOverlay();
     const items = this.page.locator(this._activeSelectors.list_item);
     const total = await items.count();
-    log.info('list', `conversations count=${total}`);
-    const wanted = config.targetContacts.map((c) => c.toLowerCase());
+    const needles = wanted.map((c) => c.toLowerCase());
     for (let i = 0; i < total; i++) {
       const item = items.nth(i);
       const name = await this._getItemName(item);
-      if (name && wanted.some((w) => name.toLowerCase().includes(w))) {
-        log.info('list', `target match index=${i} name="${name}"`);
-        // نحتفظ بالاسم الفعلي لنُرسله للباكئند بدل قائمة البدائل.
-        this.matchedContact = name;
+      if (name && needles.some((w) => name.toLowerCase().includes(w))) {
+        log.info('list', `open index=${i} name="${name}"`);
         await this._dismissCdkOverlay(); // مرّة أخرى مباشرة قبل النقر
         // نقر بالقوّة (يتجاوز أي طبقة شفّافة مثل cdk-overlay-backdrop)
         await item.click({ force: true, timeout: 15000 });
@@ -552,10 +566,22 @@ export class Scraper {
         );
         if (!wrapperHit) throw new Error('no_message_wrapper_after_open');
         this._activeSelectors.message_wrapper = wrapperHit.selector;
-        return;
+        this.matchedContact = name;
+        return name;
       }
     }
-    throw new Error(`target_not_found:${config.targetContacts.join('|')}`);
+    return null;
+  }
+
+  /**
+   * يفتح محادثة البنك — تُستدعى عند الإقلاع وبعد الاسترداد.
+   * محادثة البنك هي الحرجة (تُحدّث الرصيد)، فغيابها خطأ يوقف التشغيل،
+   * بينما غياب محادثة الأكواد لا يمنع شيئاً (يُتعامل معه في _tick).
+   */
+  async _openTargetConversation() {
+    const opened = await this._openConversation(config.bankContacts);
+    if (!opened) throw new Error(`target_not_found:${config.bankContacts.join('|')}`);
+    return opened;
   }
 
   /** يُغلق طبقات CDK overlay الشفّافة (تلميحات Material) التي تحجب النقر. */
@@ -617,7 +643,8 @@ export class Scraper {
           text: m.text,
           occurredAt: m.timestamp,
           externalId: m.hash,
-          contactName: this.matchedContact || config.targetContact,
+          contactName: this.matchedContact || '',
+          kind: looksLikeOtpMessage(m.text) ? 'otp' : 'bank',
         });
         this.seen.add(m.hash);
         this.lastMessageAt = new Date().toISOString();
@@ -642,6 +669,19 @@ export class Scraper {
     }), config.pollIntervalMs);
   }
 
+  /**
+   * المحادثة التالية في الدورة. مع محادثتين يُستطلَع كلٌّ منهما كل ~24 ثانية
+   * بدل 12 — مقبول لأن تأخير الرصيد بثوانٍ لا أثر له، ونربح قراءة الأكواد
+   * من نفس الجلسة المقترنة بلا إقران ثانٍ.
+   */
+  _nextGroup() {
+    const groups = [{ kind: 'bank', names: config.bankContacts }];
+    if (config.otpContacts.length) groups.push({ kind: 'otp', names: config.otpContacts });
+    const g = groups[this._groupIndex % groups.length];
+    this._groupIndex = (this._groupIndex + 1) % groups.length;
+    return g;
+  }
+
   async _tick() {
     if (this.paused) return;
     if (this.state !== 'running') return;
@@ -656,7 +696,7 @@ export class Scraper {
         this._startWatchdog(); // في حال ما كان يعمل
         return;
       }
-      // نحاول إعادة فتح المحادثة
+      // نحاول إعادة فتح محادثة البنك (الحرجة)
       try {
         await this._openTargetConversation();
       } catch (e) {
@@ -666,8 +706,43 @@ export class Scraper {
       }
     }
 
+    const group = this._nextGroup();
+    try {
+      const opened = await this._openConversation(group.names);
+      if (!opened) {
+        // محادثة الأكواد قد لا تكون موجودة بعد (لم تصل رسالة قطّ) — ليست خطأً
+        // يوقف التشغيل، ولا يجوز أن يمسّ مسار الرصيد. نتخطّاها لهذه الدورة.
+        log.warn('tick', `conversation not found: ${group.names.join('|')} (kind=${group.kind})`);
+        this._scheduleNextPoll();
+        return;
+      }
+    } catch (e) {
+      log.warn('tick', `open failed (${group.kind})`, e.message);
+      this._scheduleNextPoll();
+      return;
+    }
+
     const messages = await this._readLastMessages();
     this.lastSeenAt = new Date().toISOString();
+
+    // أوّل زيارة لمحادثة البنك: نُعلِّم الموجود كـ seen دون إرسال — تماماً كما
+    // يفعل bootstrap عند الإقلاع. حاسم لأن إعادة الإرسال تمسّ الرصيد.
+    //
+    // محادثة الأكواد بخلافها: نُرسل ما هو ظاهر أوّل مرّة (backfill) فيرى
+    // المستخدم أن الجلب يعمل فوراً بلا انتظار رسالة جديدة. لا أثر مالي لها،
+    // والتكرار يمنعه external_id في backend، وما بعدها يعمل بالفروق فقط.
+    if (!this.bootstrappedGroups.has(group.kind)) {
+      this.bootstrappedGroups.add(group.kind);
+      if (group.kind !== 'otp') {
+        for (const m of messages) this.seen.add(m.hash);
+        this._saveSeen();
+        log.info('bootstrap', `marked ${messages.length} existing as seen for kind=${group.kind}`);
+        this._scheduleNextPoll();
+        return;
+      }
+      log.info('bootstrap', `backfilling ${messages.length} visible otp messages`);
+    }
+
     let newCount = 0;
     for (const m of messages) {
       if (this.seen.has(m.hash)) continue;
@@ -676,14 +751,19 @@ export class Scraper {
         this.seen.add(m.hash);
         continue;
       }
+      // التوجيه بالمحتوى لا بالمحادثة وحدها: لو أخفق تبديل المحادثة صامتاً
+      // ذهبت الرسالة إلى الوجهة الصحيحة رغم ذلك، فلا يصل نصّ كود إلى مسار
+      // الرصيد ولا العكس.
+      const kind = looksLikeOtpMessage(m.text) ? 'otp' : 'bank';
       try {
         const resp = await sendToBackend({
           text: m.text,
           occurredAt: m.timestamp,
           externalId: m.hash,
-          contactName: this.matchedContact || config.targetContact,
+          contactName: this.matchedContact || '',
+          kind,
         });
-        log.info('ingest', 'sent', { applied: resp.applied, hash: m.hash.slice(0, 12) });
+        log.info('ingest', 'sent', { kind, applied: resp.applied, hash: m.hash.slice(0, 12) });
         this.seen.add(m.hash);
         this.lastMessageAt = new Date().toISOString();
         this.messagesProcessedTotal++;

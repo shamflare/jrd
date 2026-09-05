@@ -3,17 +3,21 @@ import { log } from './logger.js';
 
 /**
  * يُرسل رسالة خام من Google Messages إلى backend.
- * backend يتولّى الـ parsing (نفس parser SMS الحالي لكويت ترك)
- * والـ dedup (جدول bank_message_seen).
+ *
+ * `kind` يحدّد الوجهة:
+ *   'bank' → /api/internal/bank-message/ingest  (كويت ترك — يُحدّث الرصيد)
+ *   'otp'  → /api/internal/otp-message/ingest   (أكبنك/CEPSIFRE — كود CepSifre)
+ *
+ * backend يتولّى الـ parsing والـ dedup عبر external_id في الحالتين.
  */
-export async function sendToBackend({ text, occurredAt, externalId, contactName }) {
-  const endpoint = config.mode === 'otp' ? 'otp-message' : 'bank-message';
+export async function sendToBackend({ text, occurredAt, externalId, contactName, kind = 'bank' }) {
+  const endpoint = kind === 'otp' ? 'otp-message' : 'bank-message';
   const url = `${config.backendUrl.replace(/\/$/, '')}/api/internal/${endpoint}/ingest`;
   const body = {
     source: 'gmsg',
-    // tenant_id يُتجاهَل في وضع otp (سجلّ الأكواد لا ينتمي لأي مستأجر).
+    // tenant_id يُتجاهَل في وجهة otp (سجلّ الأكواد لا ينتمي لأي مستأجر).
     tenant_id: config.tenantId,
-    contact_name: contactName || config.targetContact,
+    contact_name: contactName || '',
     text,
     occurred_at: occurredAt || null,   // وقت ظاهر في الرسالة (تقريبي)
     external_id: externalId || null,   // hash مستقر للرسالة، يُستخدم لـ dedup
@@ -28,7 +32,7 @@ export async function sendToBackend({ text, occurredAt, externalId, contactName 
   });
   const data = await r.json().catch(() => ({}));
   if (!r.ok) {
-    log.warn('backend', `ingest http=${r.status}`, data);
+    log.warn('backend', `ingest(${kind}) http=${r.status}`, data);
     const err = new Error(`backend_ingest_${r.status}`);
     err.status = r.status;
     err.data = data;

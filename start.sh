@@ -44,27 +44,15 @@ BOT_SUP_PID=$!
 supervise gmsg node messages-scraper/src/index.js &
 GMSG_SUP_PID=$!
 
-# --- نسخة ثانية من السكرابر: أكبنك (أكواد OTP لصفحة /islam) ---
-# معزولة تماماً عن الأولى: بورت + مجلّد بروفايل + إقران Google مستقلّ،
-# لذلك انتهاء جلسة إحداهما لا يمسّ الأخرى. عطّلها بـ GMSG2_ENABLED=0.
-GMSG2_SUP_PID=""
-if [ "${GMSG2_ENABLED:-1}" != "0" ]; then
-  supervise gmsg-otp env \
-    GMSG_MODE=otp \
-    GMSG_PORT="${GMSG2_PORT:-3102}" \
-    GMSG_BROWSER_DATA="${GMSG2_BROWSER_DATA:-/data/gmsg2-browser-data}" \
-    GMSG_TARGET_CONTACT="${GMSG2_TARGET_CONTACT:-CEPSIFRE,AKBANK}" \
-    node messages-scraper/src/index.js &
-  GMSG2_SUP_PID=$!
-else
-  echo "[gmsg-otp] disabled via GMSG2_ENABLED=0"
-fi
+# ملاحظة: أكواد أكبنك (صفحة /islam) تُقرأ من نفس نسخة gmsg أعلاه — تتناوب
+# على محادثتَي KUVEYT TURK و CEPSIFRE في الجلسة المقترنة نفسها، فلا نسخة
+# ثانية ولا إقران آخر. للتعطيل: GMSG_OTP_CONTACTS= (فارغة).
 
-echo "All services started (backend=$BACKEND_PID, bot-sup=$BOT_SUP_PID, gmsg-sup=$GMSG_SUP_PID, gmsg-otp-sup=${GMSG2_SUP_PID:-off})"
+echo "All services started (backend=$BACKEND_PID, bot-sup=$BOT_SUP_PID, gmsg-sup=$GMSG_SUP_PID)"
 
 # نُبقي backend في المقدّمة: لو سقط، تموت الحاوية ويُعيد Railway تشغيلها.
 wait $BACKEND_PID
 backend_rc=$?
 echo "Backend exited with code $backend_rc — shutting down supervisors"
-kill $BOT_SUP_PID $GMSG_SUP_PID $GMSG2_SUP_PID 2>/dev/null || true
+kill $BOT_SUP_PID $GMSG_SUP_PID 2>/dev/null || true
 exit $backend_rc

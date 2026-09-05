@@ -32,17 +32,31 @@ export const config = {
 
   browserDataDir: str('GMSG_BROWSER_DATA', '') || path.join(__dirname, '..', 'browser-data'),
   headless: bool('GMSG_HEADLESS', true),
-  // اسم محادثة الهدف. يقبل عدّة بدائل مفصولة بفاصلة — نفتح أوّل محادثة
-  // يطابق اسمُها أياً منها. مفيد لأن مُرسِل أكواد أكبنك اسمه CEPSIFRE لا AKBANK.
+  // محادثات البنك (الرصيد). تقبل عدّة أسماء مفصولة بفاصلة.
   targetContact: str('GMSG_TARGET_CONTACT', 'KUVEYT TURK'),
-  get targetContacts() {
+
+  // محادثات أكواد OTP (صفحة /islam). مُرسِل أكواد أكبنك اسمه CEPSIFRE لا AKBANK.
+  //
+  // منفصلة عن GMSG_TARGET_CONTACT عمداً: خوادم الإنتاج تضبط الأخيرة في ملف
+  // .env على "KUVEYT TURK"، فلو أضفنا CEPSIFRE إلى قيمتها الافتراضية لتجاهلها
+  // .env ولما عمل شيء دون تعديل يدوي على السيرفر. اجعلها فارغة لتعطيل الأكواد.
+  // ملاحظة: لا نستخدم str() هنا لأنه يُعيد القيمة الافتراضية عند القيمة
+  // الفارغة، فتصبح `GMSG_OTP_CONTACTS=` عديمة الأثر. نُميّز "غير مضبوطة"
+  // (⇒ الافتراضي) عن "مضبوطة فارغة" (⇒ تعطيل الأكواد).
+  otpContact: process.env.GMSG_OTP_CONTACTS === undefined
+    ? 'CEPSIFRE'
+    : String(process.env.GMSG_OTP_CONTACTS),
+
+  get bankContacts() {
     return this.targetContact.split(',').map((s) => s.trim()).filter(Boolean);
   },
-
-  // وضع التشغيل — يحدّد endpoint الذي تُرسَل إليه الرسائل في backend:
-  //   'bank' (افتراضي) → /api/internal/bank-message/ingest  (كويت ترك، يُحدّث الرصيد)
-  //   'otp'            → /api/internal/otp-message/ingest   (أكبنك، يستخرج CepSifre فقط)
-  mode: str('GMSG_MODE', 'bank') === 'otp' ? 'otp' : 'bank',
+  get otpContacts() {
+    return this.otpContact.split(',').map((s) => s.trim()).filter(Boolean);
+  },
+  /** كل المحادثات التي نتناوب عليها في نفس الجلسة المقترنة. */
+  get targetContacts() {
+    return [...this.bankContacts, ...this.otpContacts];
+  },
 
   pollIntervalMs: int('GMSG_POLL_INTERVAL_MS', 12000),
   navTimeoutMs: int('GMSG_NAV_TIMEOUT_MS', 45000),

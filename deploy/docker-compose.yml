@@ -28,7 +28,6 @@ services:
       DATA_DIR: /data
       AUTH_DIR: /data/auth_sessions
       GMSG_BROWSER_DATA: /data/gmsg-browser-data
-      GMSG2_BROWSER_DATA: /data/gmsg2-browser-data
       # ملاحظة: GMSG_TENANT_ID و INTERNAL_API_KEY و JWT_SECRET … تأتي من ./.env
       # حافظ على GMSG_TENANT_ID مساوياً لمعرّف المستأجر الذي يحوي بَنك KUVEYT TURK المُفعَّل
       # (وإلا يأتي parse_status=no_bank_item ولا يُحدَّث الرصيد).

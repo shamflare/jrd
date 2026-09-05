@@ -70,14 +70,17 @@ const DEFAULT_SENDERS = 'cepsifre,akbank';
 
 export function isOtpSender({ contactName = '', text = '' } = {}) {
   const name = normalizeTr(contactName).trim();
+  const body = normalizeTr(text);
   const allowed = (process.env.OTP_ALLOWED_SENDERS || DEFAULT_SENDERS)
     .split(',')
     .map((s) => normalizeTr(s).trim())
     .filter(Boolean);
 
-  if (name) return allowed.some((a) => name.includes(a));
-  // بلا اسم مُرسِل: نتساهل — المحلّل نفسه يشترط وجود لفظ الشِّفرة.
-  return allowed.some((a) => normalizeTr(text).includes(a)) || /sifre|kod/.test(normalizeTr(text));
+  if (name && allowed.some((a) => name.includes(a))) return true;
+  // اسم المُرسِل قد يصل خاطئاً أو فارغاً (مثلاً لو أخفق تبديل المحادثة في
+  // السكرابر). لا يجوز أن يُسقط ذلك كوداً صحيحاً، فنقبل كذلك متناً يحمل لفظ
+  // CepSifre — وهو ما يشترطه المحلّل نفسه بعد قليل على أي حال.
+  return /cep\s*sifre|sifreniz|sifresi/.test(body);
 }
 
 export default { parseOtpCode, isOtpSender };
